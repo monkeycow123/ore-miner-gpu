@@ -31,7 +31,7 @@ use solana_sdk::{
 };
 use solana_transaction_status::TransactionStatus;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, error, log};
+use tracing::{info, error, log};
 
 mod batch_transfer;
 mod benchmark_rpc;
@@ -170,7 +170,7 @@ impl Miner {
             stdin.write_all(difficulty.as_ref()).await.unwrap();
 
             for (hash, pubkey) in hash_and_pubkey {
-                debug!("Mining Pubkey: {pubkey}");
+                info!(pubkey=pubkey.to_string(),  "Mining Sent to GPU");
                 stdin.write_all(hash.as_ref()).await.unwrap();
                 stdin.write_all(pubkey.as_ref()).await.unwrap();
             }
@@ -184,7 +184,7 @@ impl Miner {
             let nonce = u64::from_le_bytes(item[32..40].try_into().unwrap());
 
             results.push((hash, nonce));
-            debug!("Found nonce: {} for pubkey: {}", nonce, hash_and_pubkey[results.len() - 1].1.to_string());
+            info!(pubkey = hash_and_pubkey[results.len() - 1].1.to_string(), nonce = nonce, hash=hash.to_string(), "Nonce Found");
         }
 
         let mining_duration = mining_start.elapsed();
