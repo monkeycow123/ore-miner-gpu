@@ -29,6 +29,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 sha3 = "0.10.8"
 solana-client = "^1.16"
+solana-program = "^1.16"
 solana-sdk = "^1.16"
 solana-transaction-status = "^1.16"
 spl-associated-token-account = { version = "3.0.2", features = ["no-entrypoint"] }
