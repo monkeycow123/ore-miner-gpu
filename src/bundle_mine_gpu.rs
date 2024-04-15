@@ -286,7 +286,7 @@ impl Accounts {
     }
 
     pub const fn size() -> usize {
-        25
+        2
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -333,7 +333,7 @@ impl Accounts {
         }
 
         if !landed_tx.is_empty() {
-            let cost = 25 * constant::FEE_PER_SIGNER + tip;
+            let cost = Accounts::size() as u64 * constant::FEE_PER_SIGNER + tip;
 
             info!(
                 acc.id = self.id,
