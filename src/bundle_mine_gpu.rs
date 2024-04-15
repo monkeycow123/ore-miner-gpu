@@ -21,7 +21,7 @@ use crate::{
     constant,
     format_duration,
     format_reward,
-    jito::{subscribe_jito_tips, JitoTips},
+    jito::{JitoTips},
     utils,
     wait_return,
     Miner,
@@ -95,9 +95,9 @@ impl Miner {
         info!("splitted signers into batches");
 
         // Subscribe tip stream
-        let tips = Arc::new(RwLock::new(JitoTips::default()));
-        subscribe_jito_tips(tips.clone()).await;
-        info!("subscribed to jito tip stream");
+        // let tips = Arc::new(RwLock::new(JitoTips::default()));
+        // subscribe_jito_tips(tips.clone()).await;
+        // info!("subscribed to jito tip stream");
 
         loop {
             let mut batch = Vec::new();
@@ -138,126 +138,126 @@ impl Miner {
         batch: Vec<Accounts>,
         idle_accounts: usize,
     ) -> Option<Vec<Accounts>> {
-        let (mut treasury, mut clock, mut buses) = match Self::get_system_accounts(&client).await {
-            Ok(accounts) => accounts,
-            Err(err) => {
-                error!("fail to fetch system accounts: {err:#}");
-                wait_return!(500, Some(batch));
-            }
-        };
+        loop{
+            let (mut treasury, mut clock, mut buses) = match Self::get_system_accounts(&client).await {
+                Ok(accounts) => accounts,
+                Err(err) => {
+                    error!("fail to fetch system accounts: {err:#}");
+                    wait_return!(500, Some(batch));
+                }
+            };
 
-        let all_pubkey = batch
-            .iter()
-            .flat_map(|accounts| accounts.pubkey.clone())
-            .collect::<Vec<_>>();
+            let all_pubkey = batch
+                .iter()
+                .flat_map(|accounts| accounts.pubkey.clone())
+                .collect::<Vec<_>>();
 
-        let proof_pda = batch
-            .iter()
-            .flat_map(|accounts| accounts.proof_pda.clone())
-            .collect::<Vec<_>>();
+            let proof_pda = batch
+                .iter()
+                .flat_map(|accounts| accounts.proof_pda.clone())
+                .collect::<Vec<_>>();
 
-        let signer_balances = match Self::get_balances(&client, &all_pubkey).await {
-            Ok(b) => b,
-            Err(err) => {
-                error!("fail to get signers balances: {err:#}");
-                wait_return!(500, Some(batch));
-            }
-        };
+            let signer_balances = match Self::get_balances(&client, &all_pubkey).await {
+                Ok(b) => b,
+                Err(err) => {
+                    error!("fail to get signers balances: {err:#}");
+                    wait_return!(500, Some(batch));
+                }
+            };
 
-        let proofs = match Self::get_proof_accounts(&client, &proof_pda).await {
-            Ok(proofs) => proofs,
-            Err(err) => {
-                error!("fail to fetch proof accounts: {err:#}");
-                wait_return!(500, Some(batch));
-            }
-        };
+            let proofs = match Self::get_proof_accounts(&client, &proof_pda).await {
+                Ok(proofs) => proofs,
+                Err(err) => {
+                    error!("fail to fetch proof accounts: {err:#}");
+                    wait_return!(500, Some(batch));
+                }
+            };
 
-        let hash_and_pubkey = all_pubkey
-            .iter()
-            .zip(proofs.iter())
-            .map(|(signer, proof)| (solana_sdk::keccak::Hash::new_from_array(proof.hash.0), *signer))
-            .collect::<Vec<_>>();
-        let (mining_duration, mining_results) = self
-            .mine_hashes_gpu(&treasury.difficulty.into(), &hash_and_pubkey)
-            .await;
+            let hash_and_pubkey = all_pubkey
+                .iter()
+                .zip(proofs.iter())
+                .map(|(signer, proof)| (solana_sdk::keccak::Hash::new_from_array(proof.hash.0), *signer))
+                .collect::<Vec<_>>();
+            let (mining_duration, mining_results) = self
+                .mine_hashes_gpu(&treasury.difficulty.into(), &hash_and_pubkey)
+                .await;
 
-        // if mining_duration > time_to_next_epoch {
-        //     warn!("mining took too long, waiting for next epoch");
-        //     wait_return!(time_to_next_epoch.as_millis() as u64, Some(batch));
-        // } else {
-        //     info!(
-        //         accounts = Accounts::size() * batch.len(),
-        //         accounts.idle = idle_accounts,
-        //         mining = format_duration!(mining_duration),
-        //         "mining done"
-        //     );
-        // }
+            // if mining_duration > time_to_next_epoch {
+            //     warn!("mining took too long, waiting for next epoch");
+            //     wait_return!(time_to_next_epoch.as_millis() as u64, Some(batch));
+            // } else {
+            //     info!(
+            //         accounts = Accounts::size() * batch.len(),
+            //         accounts.idle = idle_accounts,
+            //         mining = format_duration!(mining_duration),
+            //         "mining done"
+            //     );
+            // }
 
-        info!(
-            accounts = Accounts::size() * batch.len(),
-            accounts.idle = idle_accounts,
-            mining = format_duration!(mining_duration),
-            "mining done"
-        );
+            info!(
+                accounts = Accounts::size() * batch.len(),
+                accounts.idle = idle_accounts,
+                mining = format_duration!(mining_duration),
+                "mining done"
+            );
 
-        let reset_threshold = treasury.last_reset_at.saturating_add(ore::EPOCH_DURATION);
-        debug!("buses: {}, clock: {}", buses.len(), clock.epoch);
-        (treasury, clock, buses) = match Self::get_system_accounts(&client).await {
-            Ok(accounts) => accounts,
-            Err(err) => {
-                error!("fail to fetch system accounts: {err:#}");
-                wait_return!(500, Some(batch));
-            }
-        };
-        
-        let mut time_to_next_epoch = Self::get_time_to_next_epoch(&treasury, &clock, reset_threshold).checked_add(Duration::from_secs(10)).expect("overflow");
-
-        let mut cummulative_reward = 0;
-        let target_reward = treasury.reward_rate.saturating_mul(all_pubkey.len() as u64 )*2;
-        buses.sort_by(|a, b| b.rewards.cmp(&a.rewards));
-
-        while cummulative_reward < target_reward {
+            let reset_threshold = treasury.last_reset_at.saturating_add(ore::EPOCH_DURATION);
+            debug!("buses: {}, clock: {}", buses.len(), clock.epoch);
+            (treasury, clock, buses) = match Self::get_system_accounts(&client).await {
+                Ok(accounts) => accounts,
+                Err(err) => {
+                    error!("fail to fetch system accounts: {err:#}");
+                    wait_return!(500, Some(batch));
+                }
+            };
             
-            for bus in buses.iter(){
-                cummulative_reward += bus.rewards;
-            }
+            let mut time_to_next_epoch = Self::get_time_to_next_epoch(&treasury, &clock, reset_threshold).checked_add(Duration::from_secs(10)).expect("overflow");
 
-            if cummulative_reward < target_reward {
-                warn!("no bus available for mining, waiting for next epoch",);
-                cummulative_reward = 0;
-                // wait_return!(time_to_next_epoch.as_millis() as u64, Some(batch));
-                tokio::time::sleep( time_to_next_epoch ).await;
-                (treasury, clock, buses) = match Self::get_system_accounts(&client).await {
-                    Ok(accounts) => accounts,
-                    Err(err) => {
-                        error!("fail to fetch system accounts: {err:#}");
-                        wait_return!(500, Some(batch));
-                    }
-                };
+            let mut cummulative_reward = 0;
+            let target_reward = treasury.reward_rate.saturating_mul(all_pubkey.len() as u64 )*2;
+            buses.sort_by(|a, b| b.rewards.cmp(&a.rewards));
+
+            while cummulative_reward < target_reward {
                 
-                time_to_next_epoch = Self::get_time_to_next_epoch(&treasury, &clock, reset_threshold).checked_add(Duration::from_secs(10)).expect("overflow");
-        
+                for bus in buses.iter(){
+                    cummulative_reward += bus.rewards;
+                }
+
+                if cummulative_reward < target_reward {
+                    warn!("no bus available for mining, waiting for next epoch",);
+                    cummulative_reward = 0;
+                    // wait_return!(time_to_next_epoch.as_millis() as u64, Some(batch));
+                    tokio::time::sleep( time_to_next_epoch ).await;
+                    (treasury, clock, buses) = match Self::get_system_accounts(&client).await {
+                        Ok(accounts) => accounts,
+                        Err(err) => {
+                            error!("fail to fetch system accounts: {err:#}");
+                            wait_return!(500, Some(batch));
+                        }
+                    };
+                    
+                    time_to_next_epoch = Self::get_time_to_next_epoch(&treasury, &clock, reset_threshold).checked_add(Duration::from_secs(10)).expect("overflow");
+            
+                }
             }
+
+            
+            let payer = utils::pick_richest_account(&signer_balances, &all_pubkey);
+
+            match self.send_and_confirm(
+                self.build_ixs(&batch, mining_results, Vec::from(buses), treasury.reward_rate),
+                false,
+                false,
+                payer,
+                &batch).await{
+                    Ok(sig) => {
+                        println!("Success: {}", sig);
+                    }
+                    Err(_err) => {
+                        println!("Error: Failed to send transaction");
+                    }
+                }
         }
-
-        
-        let payer = utils::pick_richest_account(&signer_balances, &all_pubkey);
-
-        match self.send_and_confirm(
-            self.build_ixs(&batch, mining_results, Vec::from(buses), treasury.reward_rate),
-            false,
-            false,
-            payer,
-            &batch).await{
-                Ok(sig) => {
-                    println!("Success: {}", sig);
-                }
-                Err(_err) => {
-                    println!("Error: Failed to send transaction");
-                }
-            }
-
-        None
     }
 }
 
@@ -286,7 +286,7 @@ impl Accounts {
     }
 
     pub const fn size() -> usize {
-        2
+        5
     }
 
     #[allow(clippy::too_many_arguments)]
